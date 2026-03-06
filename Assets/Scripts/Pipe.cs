@@ -1,20 +1,31 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class Pipe : MonoBehaviour
 {
     public Transform connection;
-    public KeyCode enterKeyCode = KeyCode.S;
+    [SerializeField] private InputActionReference enterPipeAction;
     public Vector3 enterDirection = Vector3.down;
     public Vector3 exitDirection = Vector3.zero;
 
     private void OnTriggerStay2D(Collider2D other)
     {
-        if (connection != null && other.CompareTag("Player"))
+        if (connection != null && other.CompareTag("Player") && other.TryGetComponent(out Player player))
         {
-            if (Input.GetKey(enterKeyCode) && other.TryGetComponent(out Player player)) {
-                StartCoroutine(Enter(player));
+            bool enterByKey = enterPipeAction != null && enterPipeAction.action.IsPressed();
+            bool enterByMovement = false;
+            if (Mathf.Abs(enterDirection.x) > 0.5f && enterPipeAction != null)
+            {
+                var moveAction = enterPipeAction.action.actionMap?.FindAction("Move");
+                if (moveAction != null)
+                {
+                    float moveX = moveAction.ReadValue<Vector2>().x;
+                    enterByMovement = (enterDirection.x > 0f && moveX > 0.25f) || (enterDirection.x < 0f && moveX < -0.25f);
+                }
             }
+            if (enterByKey || enterByMovement)
+                StartCoroutine(Enter(player));
         }
     }
 
@@ -29,7 +40,13 @@ public class Pipe : MonoBehaviour
         yield return new WaitForSeconds(1f);
 
         var sideSrolling = Camera.main.GetComponent<SideScrollingCamera>();
-        sideSrolling.SetUnderground(connection.position.y < sideSrolling.undergroundThreshold);
+        bool goingUnderground = connection.position.y < sideSrolling.undergroundThreshold;
+
+        if (goingUnderground)
+        {
+            yield return ScreenFade.Instance.FadeToBlack(0.3f);
+            sideSrolling.SetUnderground(true);
+        }
 
         if (exitDirection != Vector3.zero)
         {
@@ -41,6 +58,11 @@ public class Pipe : MonoBehaviour
             player.transform.position = connection.position;
             player.transform.localScale = Vector3.one;
         }
+
+        if (goingUnderground)
+            yield return ScreenFade.Instance.FadeFromBlack(0.3f);
+        else
+            yield return sideSrolling.ScrollToSurface(1f);
 
         player.movement.enabled = true;
     }

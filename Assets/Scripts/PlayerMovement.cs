@@ -1,11 +1,17 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerMovement : MonoBehaviour
 {
+    [SerializeField] private InputActionAsset gameplayActions;
+
     private Camera mainCamera;
     private Rigidbody2D rb;
     private Collider2D capsuleCollider;
+    private InputActionMap playerActionMap;
+    private InputAction moveAction;
+    private InputAction jumpAction;
 
     private Vector2 velocity;
     private float inputAxis;
@@ -27,11 +33,20 @@ public class PlayerMovement : MonoBehaviour
         mainCamera = Camera.main;
         rb = GetComponent<Rigidbody2D>();
         capsuleCollider = GetComponent<Collider2D>();
+
+        if (gameplayActions != null)
+        {
+            playerActionMap = gameplayActions.FindActionMap("Player");
+            moveAction = playerActionMap.FindAction("Move");
+            jumpAction = playerActionMap.FindAction("Jump");
+        }
     }
 
     private void OnEnable()
     {
-        rb.isKinematic = false;
+        if (playerActionMap != null) playerActionMap.Enable();
+
+        rb.bodyType = RigidbodyType2D.Dynamic;
         capsuleCollider.enabled = true;
         velocity = Vector2.zero;
         jumping = false;
@@ -39,7 +54,9 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnDisable()
     {
-        rb.isKinematic = true;
+        if (playerActionMap != null) playerActionMap.Disable();
+
+        rb.bodyType = RigidbodyType2D.Kinematic;
         capsuleCollider.enabled = false;
         velocity = Vector2.zero;
         inputAxis = 0f;
@@ -76,7 +93,10 @@ public class PlayerMovement : MonoBehaviour
     private void HorizontalMovement()
     {
         // Accelerate / decelerate
-        inputAxis = Input.GetAxis("Horizontal");
+        if (moveAction != null)
+            inputAxis = moveAction.ReadValue<Vector2>().x;
+        else
+            inputAxis = 0f;
         velocity.x = Mathf.MoveTowards(velocity.x, inputAxis * moveSpeed, moveSpeed * Time.deltaTime);
 
         // Check if running into a wall
@@ -99,7 +119,7 @@ public class PlayerMovement : MonoBehaviour
         jumping = velocity.y > 0f;
 
         // Perform jump
-        if (Input.GetButtonDown("Jump"))
+        if (jumpAction != null && jumpAction.WasPressedThisFrame())
         {
             velocity.y = jumpForce;
             jumping = true;
@@ -109,7 +129,8 @@ public class PlayerMovement : MonoBehaviour
     private void ApplyGravity()
     {
         // Check if falling
-        bool falling = velocity.y < 0f || !Input.GetButton("Jump");
+        bool jumpHeld = jumpAction != null && jumpAction.IsPressed();
+        bool falling = velocity.y < 0f || !jumpHeld;
         float multiplier = falling ? 2f : 1f;
 
         // Apply gravity and terminal velocity
